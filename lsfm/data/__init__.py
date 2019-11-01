@@ -56,3 +56,9 @@ def load_template():
 
 def save_template(template, overwrite=False):
     lio.export_pickle(template, path_to_template(), overwrite=overwrite)
+
+@lru_cache()
+def prepare_mesh_as_template(mesh):
+    mesh.landmarks['__lsfm'] = mesh.landmarks['ibug68']
+    return prepare_template_reference_space(mesh)
+    

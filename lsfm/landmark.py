@@ -1,4 +1,7 @@
 from functools import lru_cache
+
+import numpy as np
+
 from menpo.shape import PointCloud
 from menpo.transform import Scale, Translation
 from menpo3d.rasterize import (
@@ -28,6 +31,41 @@ def align_mesh_to_template(source, target, scale_corrective=1.2):
     translation = Translation(target.centre() - source.centre())
     return translation.compose_before(scale)
 
+def get_landmark_points(mesh, img_shape=(320, 240), verbose=False):
+    fitter = load_balanced_frontal_face_fitter()
+    detector = load_dlib_frontal_face_detector()
+    camera = perspective_camera_for_template(img_shape)
+
+    # Pre-process - align the mesh roughly with the template
+    aligned_mesh = align_mesh_to_template(mesh, load_template()).apply(mesh)
+
+    mesh_in_img = camera.apply(aligned_mesh)
+
+    bcs = rasterize_barycentric_coordinate_images(mesh_in_img, img_shape)
+    img = rasterize_mesh_from_barycentric_coordinate_images(mesh_in_img, *bcs)
+    shape_img = rasterize_shape_image_from_barycentric_coordinate_images(
+        mesh, *bcs)
+    # 2. Find the one bounding box in the rendered image
+    bboxes = detector(img)
+    if len(bboxes) != 1:
+        raise ValueError(
+            "Expected to find one face - found {}".format(len(bboxes)))
+    else:
+        if verbose:
+            print('Detected 1 face')
+    # 3. Fit from the bounding box
+    fr = fitter.fit_from_bb(img, bboxes[0])
+    if verbose:
+        print('AMM fitting successfully completed')
+    # 4. Sample the XYZ image to build back the landmarks
+    img_lms = fr.final_shape.from_mask(LANDMARK_MASK)
+
+    # test to see if the landmark fell on the 3D surface or not
+    occlusion_mask = img.mask.sample(img_lms).ravel()
+
+    img.landmarks['__lsfm_on_surface'] = img_lms.from_mask(occlusion_mask)
+    img.landmarks['__lsfm_off_surface'] = img_lms.from_mask(~occlusion_mask)
+    return PointCloud(shape_img.sample(img.landmarks['__lsfm_on_surface']).T)
 
 def landmark_mesh(mesh, img_shape=(320, 240), verbose=False):
     fitter = load_balanced_frontal_face_fitter()

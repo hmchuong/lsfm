@@ -5,6 +5,7 @@ from pathlib import Path
 from shutil import copy
 
 from scipy.io import savemat
+import cv2
 
 import numpy as np
 from menpo.base import LazyList
@@ -12,7 +13,8 @@ import menpo.io as mio
 from menpo.io.output.base import _validate_filepath
 import menpo3d.io as m3io
 from menpo.image.base import normalize_pixels_range
-
+from menpo3d.io.output.mesh import obj_exporter
+from menpo.shape import ColouredTriMesh
 export_pickle = partial(mio.export_pickle, protocol=4)
 import_pickle = partial(mio.import_pickle, encoding='latin1')
 
@@ -42,6 +44,53 @@ def import_mesh(path):
         mesh.texture.pixels = normalize_pixels_range(mesh.texture.pixels)
     return mesh
 
+def import_mesh_as_color_trimesh(path):
+    img = None
+    h, w = 0,0
+    
+    mean_points = []
+    trilist = []
+    vt_colors = []
+    map3dto2d = {}
+    with open(path, "r") as f:
+        for line in f:
+            if line.startswith("mtllib"):
+                # Get texture
+                mtl_path = path.parent / line.strip().split()[-1]
+                mtl = open(mtl_path, "r")
+                for l in mtl:
+                    if l.startswith("map_Kd"):
+                        img_path = str(mtl_path.parent / l.strip().split()[-1])
+                        print("Read image at", img_path)
+                        img = cv2.imread(img_path)
+                        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                        h,w, _ = img.shape
+                mtl.close()
+            if line.startswith("v "):
+                tokens = line.strip().split()
+                x, y, z = float(tokens[1]), float(tokens[2]), float(tokens[3])
+                mean_points.append([x,y,z])
+            if line.startswith("vt "):
+                tokens = line.strip().split()
+                x, y = float(tokens[1]), float(tokens[2])
+                vt_colors.append(img[int((1-y)*h), int(x*w)].tolist())
+            if line.startswith("f "):
+                tokens = line.strip().split()
+                tripoints = []
+                for comp in tokens[1:]:
+                    pts = comp.split("/")
+                    tripoints.append(int(pts[0]) - 1)
+                    map3dto2d[int(pts[0])-1] = int(pts[1])-1
+                trilist.append(tripoints[:3])
+    mean_colour = [None] * len(mean_points)
+
+    for k, v in map3dto2d.items():
+        mean_colour[k] = vt_colors[v]
+    mean_points = np.array(mean_points)
+    trilist = np.array(trilist)
+    mean_colour = np.array(mean_colour) / 255
+    return ColouredTriMesh(mean_points, trilist=trilist, colours=mean_colour)
+            
 
 def path_settings(r):
     return r / 'settings.json'

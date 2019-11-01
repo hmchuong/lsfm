@@ -74,15 +74,16 @@ def correspond_and_save(r, id_, path, verbose=False):
             print('{} already processed - skipping.'.format(id_))
         return
     mesh = lio.import_mesh(path)
-    try:
-        c = landmark_and_correspond_mesh(mesh, verbose=verbose)
-    except Exception as e:
-        if type(e) is KeyboardInterrupt:
-            print(e)
-            sys.exit(1)
-        print('{} - FAILED TO CORRESPOND: {}'.format(id_, e))
-        lio.export_problematic(r, id_, str(e))
-        return
+    #try:
+    c = landmark_and_correspond_mesh(mesh, verbose=verbose)
+    #except Exception as e:
+        #if type(e) is KeyboardInterrupt:
+            #print(e)
+            #sys.exit(1)
+        #print('{} - FAILED TO CORRESPOND: {}'.format(id_, e))
+        #lio.export_problematic(r, id_, str(e))
+        #return
+    import pdb; pdb.set_trace();
     lio.export_shape_nicp(r, id_, c['shape_nicp'])
     lio.export_landmark_visualization(r, id_, c['landmarked_image'])
     lio.export_shape_nicp_visualization(r, id_,
